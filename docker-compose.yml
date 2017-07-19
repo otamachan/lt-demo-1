@@ -1,0 +1,70 @@
+version: '2'
+services:
+  xvfb:
+    image: otamachan/xvfb
+    command: -screen 0 1024x768x24 -ac -nolisten tcp +extension GLX
+    volumes:
+      - "x11:/tmp/.X11-unix"
+  roscore:
+    image: ros:kinetic-ros-core
+    command: ["roscore"]
+    tty: true
+  rosbag:
+    image: ros:kinetic-ros-core
+    command: /opt/ros/kinetic/lib/rosbag/record --buffsize 256 --chunksize 768 -O /tmp/logs/rosbag /rosout /odom /mobile_base/commands/velocity /mobile_base/events/cliff
+    stop_signal: SIGINT
+    environment:
+      - ROS_MASTER_URI=http://roscore:11311
+    links:
+      - roscore
+    volumes:
+      - "./logs:/tmp/logs"
+  gazebo_models:
+    image: otamachan/docker-gazebo-models
+    stop_signal: SIGKILL
+  kobuki_gazebo:
+    image: otamachan/kobuki-gazebo
+    command: roslaunch kobuki_gazebo kobuki_playground.launch
+#    command: roslaunch gazebo_ros empty_world.launch
+    tty: true
+    environment:
+      - ROS_MASTER_URI=http://roscore:11311
+      - DISPLAY=:1
+      - QT_X11_NO_MITSHM=1
+      - LIBGL_DEBUG=verbose
+    links:
+      - roscore
+    volumes_from:
+      - gazebo_models
+    volumes:
+      - "x11:/tmp/.X11-unix"
+  kobuki_walker:
+    image: otamachan/kobuki-gazebo
+    command: roslaunch kobuki_gazebo safe_random_walker_app.launch
+    tty: true
+    environment:
+      - ROS_MASTER_URI=http://roscore:11311
+    links:
+      - roscore
+  ffmpeg:
+    image: otamachan/ffmpeg
+    command: ["-c", "sleep 3 && exec ffmpeg -f x11grab -s 1024x768 -r 10 -i :1+nomouse -c:v libx264 -preset ultrafast -pix_fmt yuv420p -y /tmp/logs/capture.mp4"]
+    entrypoint: [/bin/sh]
+    tty: true
+    environment:
+      - DISPLAY=:1
+    volumes:
+      - "./logs:/tmp/logs"
+      - "x11:/tmp/.X11-unix"
+  xrefresh:
+    image: otamachan/ffmpeg
+    command: ["-c", "sleep 5 && xrefresh -display :1"]
+    entrypoint: [/bin/sh]
+    stop_signal: SIGKILL
+    environment:
+      - DISPLAY=:1
+    volumes:
+      - "x11:/tmp/.X11-unix"
+volumes:
+  x11: {}
+#  logs: {}
